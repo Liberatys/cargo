@@ -167,6 +167,8 @@ pub struct Config {
     target_dir: Option<Filesystem>,
     /// Environment variables, separated to assist testing.
     env: HashMap<String, String>,
+    /// Environment variables, converted to upper case to check for key mismatch
+    upper_case_env: HashMap<String, String>,
     /// Tracks which sources have been updated to avoid multiple updates.
     updated_sources: LazyCell<RefCell<HashSet<SourceId>>>,
     /// Lock, if held, of the global package cache along with the number of
@@ -211,6 +213,10 @@ impl Config {
             })
             .collect();
 
+        let upper_case_env: HashMap<String, String> = env.clone().into_iter().map(|(key, value)| {
+            (key.to_uppercase(), value)
+        }).collect();
+
         let cache_rustc_info = match env.get("CARGO_CACHE_RUSTC_INFO") {
             Some(cache) => cache != "0",
             _ => true,
@@ -244,6 +250,7 @@ impl Config {
             creation_time: Instant::now(),
             target_dir: None,
             env,
+            upper_case_env,
             updated_sources: LazyCell::new(),
             package_cache_lock: RefCell::new(None),
             http_config: LazyCell::new(),
@@ -525,7 +532,10 @@ impl Config {
                     definition,
                 }))
             }
-            None => Ok(None),
+            None => {
+                self.environment_key_case_mismatch_check(key);
+                Ok(None)
+            },
         }
     }
 
@@ -545,7 +555,15 @@ impl Config {
                 return true;
             }
         }
+        self.environment_key_case_mismatch_check(key);
+
         false
+    }
+
+    fn environment_key_case_mismatch_check(&self, key: &ConfigKey) {
+        if self.upper_case_env.get(key.as_env_key()).is_some() {
+            let _ = self.shell().warn(format!("Target names in environment require uppercase, but given target: {}, contains lowercase or dash", key));
+        }
     }
 
     /// Get a string config value.
@@ -640,7 +658,10 @@ impl Config {
     ) -> CargoResult<()> {
         let env_val = match self.env.get(key.as_env_key()) {
             Some(v) => v,
-            None => return Ok(()),
+            None => {
+                self.environment_key_case_mismatch_check(key);
+                return Ok(())
+            },
         };
 
         let def = Definition::Environment(key.as_env_key().to_string());
