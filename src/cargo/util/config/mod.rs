@@ -212,10 +212,14 @@ impl Config {
                 }
             })
             .collect();
+        
+        let mut upper_case_env : HashMap<String, String> = HashMap::new();
 
-        let upper_case_env: HashMap<String, String> = env.clone().into_iter().map(|(key, value)| {
-            (key.to_uppercase(), value)
-        }).collect();
+        if !cfg!(windows) {
+            upper_case_env = env.clone().into_iter().map(|(k, _)| {
+                (k.to_uppercase().replace("-", "_"), k)
+            }).collect();
+        }
 
         let cache_rustc_info = match env.get("CARGO_CACHE_RUSTC_INFO") {
             Some(cache) => cache != "0",
@@ -533,7 +537,7 @@ impl Config {
                 }))
             }
             None => {
-                self.environment_key_case_mismatch_check(key);
+                self.check_environment_key_case_mismatch(key);
                 Ok(None)
             },
         }
@@ -555,14 +559,23 @@ impl Config {
                 return true;
             }
         }
-        self.environment_key_case_mismatch_check(key);
+        self.check_environment_key_case_mismatch(key);
 
         false
     }
 
-    fn environment_key_case_mismatch_check(&self, key: &ConfigKey) {
-        if self.upper_case_env.get(key.as_env_key()).is_some() {
-            let _ = self.shell().warn(format!("Target names in environment require uppercase, but given target: {}, contains lowercase or dash", key));
+    fn check_environment_key_case_mismatch(&self, key: &ConfigKey) {
+        if cfg!(windows) {
+            return;
+        }
+        match self.upper_case_env.get(key.as_env_key()){
+            Some(env_key) => {
+                let _ = self.shell().warn(
+                format!("Variables in environment require uppercase,
+                        but given variable: {}, contains lowercase or dash.", env_key)
+                );
+            },
+            None => {},
         }
     }
 
@@ -659,7 +672,7 @@ impl Config {
         let env_val = match self.env.get(key.as_env_key()) {
             Some(v) => v,
             None => {
-                self.environment_key_case_mismatch_check(key);
+                self.check_environment_key_case_mismatch(key);
                 return Ok(())
             },
         };

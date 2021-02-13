@@ -366,7 +366,8 @@ fn target_in_environment_contains_lower_case() {
             .env(target_key, "nonexistent-linker")
             .with_status(101)
             .with_stderr_contains(
-                format!("warning: Target names in environment require uppercase, but given target: {}, contains lowercase or dash", target_key)
+                format!("warning: Variables in environment require uppercase,
+                        but given variable: {}, contains lowercase or dash.", target_key)
             )
             .run();
     }
